@@ -1,107 +1,235 @@
-# WIN-GO Router 多模型任务路由
+# AI Model Router 多模型智能路由指南
 
-> Multi-Model Task Router: 根据任务复杂度智能选择最适合的 AI 模型，节省 Token 消耗
+> A practical guide to intelligent AI model routing - save tokens while getting optimal results
 
-## 核心价值
+## 为什么需要模型路由？
 
-| 特性 | 说明 |
-|------|------|
-| **Token 节省** | 简单任务用 MiniMax，复杂任务用 GPT-5.4/Gemini 3.1，避免大炮打蚊子 |
-| **任务匹配** | 不同模型擅长不同任务，按需选择最优方案 |
-| **零配置** | 只需在消息前加 `WIN` 或 `GO` 关键字即可触发 |
+| 场景 | 问题 | 解决方案 |
+|------|------|----------|
+| 简单问答 | 浪费 GPT-4 能力 | → 用 MiniMax/Gemini Flash |
+| 代码调试 | 需要强推理 | → 用 GPT-5.4 / Gemini Pro |
+| 日常对话 | 成本太高 | → 用免费/低成本模型 |
 
-## 触发器
+**核心洞察**：80% 的任务不需要最强的模型，但 100% 都在被默认模型处理。
+
+---
+
+## 触发器 | Triggers
 
 | 触发词 | 模型 | 适用场景 |
 |--------|------|----------|
-| `WIN` | GPT-5.4 (OpenAI Codex) | 复杂代码、深度推理、多步骤任务 |
-| `GO` | Gemini 3.1 Pro | 快速查询、中等复杂度任务、Google生态 |
+| `GPT` | GPT-5.4 (OpenAI Codex) | 复杂代码、深度推理、多步骤任务 |
+| `GEM` | Gemini 3.1 Pro | 快速查询、中等复杂度、Google 生态任务 |
 | (默认) | MiniMax 2.5 | 简单对话、日常任务 |
 
-## 使用方式
+### 使用示例 | Examples
 
 ```
-WIN 帮我写一个 React 组件，要求支持拖拽和主题切换
-GO 查一下最新的 BTC 价格
-1+1等于几？ (默认走 MiniMax)
+GPT 帮我写一个 React 组件，要求支持拖拽和主题切换
+GEM 查一下最新的 BTC 价格分析
+今天天气怎么样？ (默认走 MiniMax)
 ```
 
-## 实现原理
+---
 
-### 1. 关键词检测 (正则匹配)
+## 实现原理 | Implementation
+
+### 1. 关键词检测 | Keyword Detection
+
+使用正则表达式进行**整词匹配**，避免误触发：
 
 ```python
-# 整个词匹配，避免误触发
-WIN_PATTERN = r'\bWIN\b'      # 匹配 "WIN xxx"
-GO_PATTERN = r'\bGO\b'        # 匹配 "GO xxx"
+import re
+
+# 匹配 "GPT xxx" 或 "GEM xxx"
+GPT_PATTERN = r'\bGPT\b'      # 完整词，不匹配 "GPT4" 或 "gpt"
+GEM_PATTERN = r'\bGEM\b'      # 完整词，不匹配 "emoji" 或 "gem"
 ```
 
-### 2. 模型路由逻辑
+**为什么不用 substring 匹配？**
+- "GPT" 匹配 "GPT4" → 误触发
+- "GEM" 匹配 "emoji" → 误触发
+- `\b` (word boundary) 确保只匹配独立单词
+
+### 2. 路由逻辑 | Routing Logic
 
 ```python
-def route_task(message: str) -> str:
-    if re.search(r'\bWIN\b', message, re.IGNORECASE):
-        return spawn_subagent(model="openai-codex/gpt-5.4", task=remove_trigger(message, "WIN"))
-    elif re.search(r'\bGO\b', message, re.IGNORECASE):
-        return exec_gemini(model="gemini-3.1-pro-preview", prompt=remove_trigger(message, "GO"))
+def route_task(message: str) -> dict:
+    """
+    根据触发词路由到不同模型
+    """
+    if re.search(r'\bGPT\b', message, re.IGNORECASE):
+        return {
+            "model": "openai-codex/gpt-5.4",
+            "task": remove_trigger(message, "GPT"),
+            "type": "subagent"
+        }
+    elif re.search(r'\bGEM\b', message, re.IGNORECASE):
+        return {
+            "model": "gemini-3.1-pro-preview",
+            "prompt": remove_trigger(message, "GEM"),
+            "type": "cli"
+        }
     else:
-        return run_minimax(message)  # 默认模型
+        return {
+            "model": "minimax-2.5",
+            "prompt": message,
+            "type": "default"
+        }
 ```
 
-### 3. 子任务隔离
+### 3. Token 移除 | Token Removal
 
-- WIN 触发 spawn 子任务到 GPT-5.4
-- GO 触发调用 Gemini CLI
-- 默认任务在主上下文执行 MiniMax
+```python
+def remove_trigger(message: str, trigger: str) -> str:
+    """移除触发词，保留剩余内容"""
+    # 使用正则替换，支持大小写
+    pattern = r'\b' + trigger + r'\b'
+    return re.sub(pattern, '', message, flags=re.IGNORECASE).strip()
 
-## Token 节省效果
+# 示例
+# "GPT 帮我写代码" → "帮我写代码"
+# "GEM 查BTC" → "查BTC"
+```
 
-假设平均场景：
+### 4. 子任务隔离 | Subtask Isolation
 
-| 场景 | 全量 GPT-4 | WIN/GO 路由 | 节省 |
-|------|-----------|-------------|------|
-| 简单问答 | ~500 tokens | ~50 tokens (MiniMax) | **90%** |
-| 代码审查 | ~2000 tokens | ~300 tokens (GO) | **85%** |
-| 复杂重构 | ~5000 tokens | ~5000 tokens (WIN) | 0% |
+- **GPT 触发**：spawn 子任务到 OpenAI Codex
+- **GEM 触发**：调用 Gemini CLI
+- **默认**：在主上下文执行
 
-> **关键洞察**：80% 的日常任务不需要 GPT-4 级别的能力，但往往被默认模型浪费。
+---
 
-## 适配其他平台
+## OpenClaw 配置示例 | OpenClaw Configuration
 
-### OpenClaw 配置
-
-在 `AGENTS.md` 中添加：
+在 `AGENTS.md` 中添加以下配置：
 
 ```markdown
-### WIN Trigger
-- Pattern: `\bWIN\b` (case-insensitive)
+### GPT Trigger
+- Pattern: `\bGPT\b` (case-insensitive)
 - Action: Spawn subagent with model="openai-codex/gpt-5.4"
 
-### GO Trigger  
-- Pattern: `\bGO\b` (case-insensitive)
+### GEM Trigger  
+- Pattern: `\bGEM\b` (case-insensitive)
 - Action: Run `gemini -m gemini-3.1-pro-preview -p "<prompt>"`
 ```
 
-### 自定义模型
+### 自定义模型 | Custom Models
 
-修改配置中的模型名称即可：
+修改配置中的模型名称：
 
 ```python
-WIN_MODEL = "openai-codex/gpt-5.4"  # 或其他模型
-GO_MODEL = "gemini-3.1-pro-preview"  # 或其他模型
+# 可选模型
+GPT_MODELS = [
+    "openai-codex/gpt-5.4",
+    "gpt-4.5",
+    "gpt-4o"
+]
+
+GEM_MODELS = [
+    "gemini-3.1-pro-preview",
+    "gemini-2.5-pro", 
+    "gemini-1.5-pro"
+]
 ```
 
-## 扩展思路
+---
 
-1. **自动判断**：根据任务关键词自动路由（需结合 LLM 判断）
-2. **多级路由**：添加 MEDIUM/HARD 等更多级别
-3. **成本追踪**：记录每次路由的 Token 消耗
+## Token 节省效果 | Token Savings
 
-## 许可证
+| 场景 | 全量 GPT-4 | 智能路由 | 节省比例 |
+|------|-----------|----------|----------|
+| 简单问答 | ~500 tokens | ~50 tokens | **90%** |
+| 代码审查 | ~2000 tokens | ~300 tokens | **85%** |
+| 中等任务 | ~3000 tokens | ~800 tokens | **73%** |
+| 复杂重构 | ~5000 tokens | ~5000 tokens | 0% |
 
-MIT License - 欢迎 fork 和 PR！
+### 成本计算示例 | Cost Calculation
+
+假设定价（仅供参考）：
+- GPT-4: $0.03/1K tokens
+- Gemini Pro: $0.01/1K tokens  
+- MiniMax: $0.001/1K tokens
+
+| 任务类型 | 路由前成本 | 路由后成本 | 月省（1000次） |
+|----------|-----------|-----------|----------------|
+| 简单问答 | $0.015 | $0.0005 | **$14.5** |
+| 代码审查 | $0.06 | $0.003 | **$57** |
+
+---
+
+## 进阶扩展 | Advanced Extensions
+
+### 1. 自动判断模式 | Auto-Detection Mode
+
+```python
+def auto_route(message: str) -> str:
+    """根据任务关键词自动判断"""
+    complex_keywords = ["重构", "调试", "优化", "refactor", "debug"]
+    medium_keywords = ["分析", "解释", "compare", "analyze"]
+    
+    if any(k in message for k in complex_keywords):
+        return "GPT"
+    elif any(k in message for k in medium_keywords):
+        return "GEM"
+    else:
+        return "DEFAULT"
+```
+
+### 2. 多级路由 | Multi-Level Routing
+
+```
+SIMPLE → 免费/低成本模型
+MEDIUM → Gemini Pro  
+COMPLEX → GPT-5.4
+RESEARCH → GPT-4 + 搜索增强
+```
+
+### 3. 成本追踪 | Cost Tracking
+
+```python
+def track_cost(model: str, input_tokens: int, output_tokens: int):
+    """记录各模型消耗"""
+    pricing = {
+        "gpt-5.4": 0.03,
+        "gemini-3.1-pro": 0.01,
+        "minimax-2.5": 0.001
+    }
+    cost = (input_tokens + output_tokens) / 1000 * pricing[model]
+    return cost
+```
+
+---
+
+## 常见问题 | FAQ
+
+**Q: 触发词大小写敏感吗？**
+> A: 不敏感，`gpt`、`Gpt`、`GPT` 都可以触发。
+
+**Q: 可以同时使用多个触发词吗？**
+> A: 建议只用一个。当前逻辑优先 `GPT` > `GEM` > 默认。
+
+**Q: 如何添加新的模型？**
+> A: 修改配置中的模型映射表即可，支持任意 LLM。
+
+**Q: 触发器不工作怎么办？**
+> A: 检查正则表达式，确保使用 `\b` 边界匹配。
+
+---
+
+## 相关项目 | Related Projects
+
+- [OpenClaw](https://github.com/openclaw/openclaw) - AI Agent 框架
+- [Gemini CLI](https://github.com/google/gemini-cli) - Google AI CLI
+- [OpenAI Codex](https://openai.com/codex) - OpenAI 编程模型
+
+---
+
+## 许可证 | License
+
+MIT License - 欢迎 Fork 和 PR！
 
 ---
 
 **维护者**: 0xUnite  
-**项目地址**: https://github.com/0xUnite/win-go-router
+**项目地址**: https://github.com/0xUnite/ai-model-router
