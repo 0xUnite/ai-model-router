@@ -477,5 +477,3 @@ MIT License — 欢迎 Fork 和 PR。
 
 **维护者 | Maintainer**: 0xUnite  
 **项目地址 | Repository**: https://github.com/0xUnite/ai-model-router
-
-Test by GEM with YOLO mode - Fri Mar 13 23:08:48 KST 2026
