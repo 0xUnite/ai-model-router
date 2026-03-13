@@ -202,6 +202,46 @@ GEM_MODELS = [
 ]
 ```
 
+## ⚠️ 重要注意事项 | Important Notes
+
+### 模型名称避坑指南 | Model Name Pitfalls
+
+**问题 | Problem：**
+Gemini 预览版模型的名称有时会让人困惑。
+
+- ❌ `gemini-3-pro-preview` → **不存在**，会 404
+- ❌ `gemini-3.0-pro-preview` → **不存在**，会 404
+- ✅ `gemini-3.1-pro-preview` → 正确可用
+- ✅ `gemini-2.5-pro` → 稳定可用
+
+**原因 | Why：**
+Google 的 Gemini 模型在正式发布稳定版之前，会先推出多个预览版（Preview）。这些预览版的命名规则是：
+- `gemini-3.1-pro-preview` = Gemini 3.1 Pro 预览版
+- `gemini-2.5-pro` = Gemini 2.5 Pro 稳定版（无需 preview 后缀）
+
+如果你在配置中使用了错误的模型名，会看到类似这样的错误：
+```
+ModelNotFoundError: Requested entity was not found.
+```
+
+**解决方案 | Solution：**
+1. 始终使用完整的模型名称（包括 `-preview` 后缀）
+2. 如果不确定，可以先用 CLI 测试：
+   ```bash
+   gemini -m <模型名> -p "test"
+   ```
+3. 参考 [Google AI Studio](https://aistudio.google.com/app/prompts) 获取可用模型列表
+
+### OpenClaw 配置示例 | OpenClaw Config Example
+
+在 `AGENTS.md` 中配置：
+
+```markdown
+### GEM Trigger
+- Model: `gemini-3.1-pro-preview`
+- Action: Run `gemini -m gemini-3.1-pro-preview -p "<prompt>"`
+```
+
 ---
 
 ## 实际案例 | Real-world Examples
